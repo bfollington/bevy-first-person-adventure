@@ -1,12 +1,16 @@
+mod post_processing;
+
 use backend::HitData;
-use bevy::prelude::*;
+use bevy::{prelude::*, render::camera::Exposure};
 use bevy_fps_controller::controller::*;
 use bevy_mod_picking::backend::PointerHits;
 use bevy_mod_picking::backends::raycast::RaycastBackend;
 use bevy_mod_picking::picking_core::PickingPluginsSettings;
 use bevy_mod_picking::prelude::*;
 use bevy_rapier3d::prelude::*;
+use post_processing::{PostProcessPlugin, PostProcessSettings};
 use rand::Rng;
+use std::f32::consts::TAU;
 
 use bevy::window::CursorGrabMode;
 
@@ -16,6 +20,7 @@ fn main() {
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(FpsControllerPlugin)
         .add_plugins(RapierDebugRenderPlugin::default())
+        .add_plugins(PostProcessPlugin)
         .insert_resource(PickingPluginsSettings {
             is_input_enabled: true,
             is_focus_enabled: true,
@@ -175,7 +180,25 @@ fn setup(
         .id();
 
     // Camera
-    commands.spawn((Camera3dBundle::default(), RenderPlayer { logical_entity }));
+    // commands.spawn((Camera3dBundle::default(), RenderPlayer { logical_entity }));
+
+    commands.spawn((
+        Camera3dBundle {
+            exposure: Exposure::SUNLIGHT,
+            projection: Projection::Perspective(PerspectiveProjection {
+                fov: TAU / 5.0,
+                ..default()
+            }),
+            ..default()
+        },
+        RenderPlayer { logical_entity },
+        PostProcessSettings {
+            pixel_size: 512.,     // Smaller value for less pixelation
+            edge_threshold: 0.5,  // Higher value for less pronounced edges
+            color_depth: 16.0,    // Higher value for more colors
+            effect_strength: 1.0, // Adjust this to blend with the original image
+        },
+    ));
 }
 
 #[derive(Component)]
