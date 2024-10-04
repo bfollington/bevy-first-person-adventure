@@ -143,7 +143,8 @@ fn setup(
     // Light
     commands.spawn(PointLightBundle {
         point_light: PointLight {
-            intensity: 1500.0,
+            intensity: 150000000.0,
+            range: 100.0,
             shadows_enabled: true,
             ..default()
         },
@@ -232,7 +233,7 @@ fn setup(
         },
         RenderPlayer { logical_entity },
         PostProcessSettings {
-            pixel_size: 512.,     // Smaller value for less pixelation
+            pixel_size: 256.,     // Smaller value for less pixelation
             edge_threshold: 0.5,  // Higher value for less pronounced edges
             color_depth: 16.0,    // Higher value for more colors
             effect_strength: 1.0, // Adjust this to blend with the original image
