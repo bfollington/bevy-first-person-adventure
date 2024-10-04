@@ -2,6 +2,7 @@ mod post_processing;
 
 use backend::HitData;
 use bevy::{prelude::*, render::camera::Exposure};
+use bevy_common_assets::ron::RonAssetPlugin;
 use bevy_fps_controller::controller::*;
 use bevy_mod_picking::backend::PointerHits;
 use bevy_mod_picking::backends::raycast::RaycastBackend;
@@ -14,6 +15,21 @@ use std::f32::consts::TAU;
 
 use bevy::window::CursorGrabMode;
 
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+enum AppState {
+    #[default]
+    Loading,
+    Level,
+}
+
+#[derive(Resource, Debug)]
+struct LevelHandle(Handle<Level>);
+
+#[derive(serde::Deserialize, Debug, bevy::asset::Asset, bevy::reflect::TypePath)]
+struct Level {
+    positions: Vec<Vec3>,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -21,13 +37,16 @@ fn main() {
         .add_plugins(FpsControllerPlugin)
         .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(PostProcessPlugin)
+        .add_plugins(RonAssetPlugin::<Level>::new(&["level.ron"]))
         .insert_resource(PickingPluginsSettings {
             is_input_enabled: true,
             is_focus_enabled: true,
             ..default()
         })
+        .init_state::<AppState>()
         .add_plugins(DefaultPickingPlugins)
         .add_systems(Startup, (setup, setup_obstacle_course, setup_reticle))
+        .add_systems(Update, spawn_level.run_if(in_state(AppState::Loading)))
         .add_systems(Update, (change_object_color, update_fps_camera))
         .add_systems(Update, manage_cursor)
         .run();
@@ -36,24 +55,44 @@ fn main() {
 #[derive(Component)]
 struct ClickableObject;
 
+fn spawn_level(
+    mut commands: Commands,
+    level: Res<LevelHandle>,
+    mut levels: ResMut<Assets<Level>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut state: ResMut<NextState<AppState>>,
+) {
+    if let Some(level) = levels.get(level.0.id()) {
+        let mut i = 0;
+        for position in level.positions.iter() {
+            println!("Spawning at {:?}", position);
+
+            commands.spawn((
+                PbrBundle {
+                    mesh: meshes.add(Cuboid::new(0.5, 2.0 + i as f32 * 0.5, 0.5)),
+                    material: materials.add(Color::srgb(0.6, 0.6, 0.6)),
+                    transform: Transform::from_xyz(position.x, position.y, position.z),
+                    ..default()
+                },
+                Collider::cuboid(0.25, 1.0 + i as f32 * 0.25, 0.25),
+            ));
+            i += 1;
+        }
+
+        state.set(AppState::Level);
+    }
+}
+
 fn setup_obstacle_course(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
-    // Pillars
-    for i in 0..5 {
-        let x = i as f32 * 3.0 - 6.0;
-        commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(Cuboid::new(0.5, 2.0 + i as f32 * 0.5, 0.5)),
-                material: materials.add(Color::srgb(0.6, 0.6, 0.6)),
-                transform: Transform::from_xyz(x, (2.0 + i as f32 * 0.5) / 2.0, -5.0),
-                ..default()
-            },
-            Collider::cuboid(0.25, 1.0 + i as f32 * 0.25, 0.25),
-        ));
-    }
+    let level = LevelHandle(asset_server.load("test.level.ron"));
+    println!("Level: {:?}", level);
+    commands.insert_resource(level);
 
     // Ramps
     let ramp_sizes = [(5.0, 1.0), (5.0, 2.0), (5.0, 3.0)];
@@ -260,6 +299,7 @@ fn manage_cursor(
     mut windows: Query<&mut Window>,
     btn: Res<ButtonInput<MouseButton>>,
     key: Res<ButtonInput<KeyCode>>,
+    mut state: ResMut<NextState<AppState>>,
 ) {
     let mut window = windows.single_mut();
 
@@ -274,5 +314,9 @@ fn manage_cursor(
     if key.just_pressed(KeyCode::Escape) {
         window.cursor.grab_mode = CursorGrabMode::None;
         window.cursor.visible = true;
+    }
+
+    if key.just_pressed(KeyCode::KeyR) {
+        state.set(AppState::Loading);
     }
 }
