@@ -3,6 +3,7 @@ use bevy::{
     core_pipeline::{
         core_3d::graph::{Core3d, Node3d},
         fullscreen_vertex_shader::fullscreen_shader_vertex_state,
+        prepass::ViewPrepassTextures,
     },
     ecs::query::QueryItem,
     gltf::*,
@@ -38,12 +39,23 @@ pub struct MainScene {
 }
 
 // Add these structs and implementations
-#[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
+#[derive(Component, Clone, Copy, ExtractComponent, ShaderType)]
 pub struct PostProcessSettings {
     pub pixel_size: f32,
-    pub edge_threshold: f32,
-    pub color_depth: f32,
-    pub effect_strength: f32,
+    pub normal_edge_strength: f32,
+    pub depth_edge_strength: f32,
+    pub resolution: Vec2,
+}
+
+impl Default for PostProcessSettings {
+    fn default() -> Self {
+        Self {
+            pixel_size: 8.0,
+            normal_edge_strength: 0.3,
+            depth_edge_strength: 0.4,
+            resolution: Vec2::new(1280., 720.), // This will be updated in the extract phase
+        }
+    }
 }
 
 pub struct PostProcessPlugin;
@@ -91,6 +103,7 @@ struct PostProcessNode;
 impl ViewNode for PostProcessNode {
     type ViewQuery = (
         &'static ViewTarget,
+        &'static ViewPrepassTextures,
         &'static PostProcessSettings,
         &'static DynamicUniformIndex<PostProcessSettings>,
     );
@@ -99,7 +112,9 @@ impl ViewNode for PostProcessNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, _post_process_settings, settings_index): QueryItem<Self::ViewQuery>,
+        (view_target, view_textures, _post_process_settings, settings_index): QueryItem<
+            Self::ViewQuery,
+        >,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let post_process_pipeline = world.resource::<PostProcessPipeline>();
@@ -123,6 +138,8 @@ impl ViewNode for PostProcessNode {
             &BindGroupEntries::sequential((
                 post_process.source,
                 &post_process_pipeline.sampler,
+                view_textures.depth_view().unwrap(),
+                view_textures.normal_view().unwrap(),
                 settings_binding.clone(),
             )),
         );
@@ -165,6 +182,10 @@ impl FromWorld for PostProcessPipeline {
                 (
                     texture_2d(TextureSampleType::Float { filterable: true }),
                     sampler(SamplerBindingType::Filtering),
+                    // Depth texture (multisampled)
+                    texture_2d_multisampled(TextureSampleType::Depth),
+                    // Normal texture
+                    texture_2d_multisampled(TextureSampleType::Float { filterable: false }),
                     uniform_buffer::<PostProcessSettings>(true),
                 ),
             ),

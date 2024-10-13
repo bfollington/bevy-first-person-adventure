@@ -1,7 +1,11 @@
 mod post_processing;
 
 use backend::HitData;
-use bevy::{prelude::*, render::camera::Exposure};
+use bevy::{
+    core_pipeline::prepass::{DepthPrepass, NormalPrepass},
+    prelude::*,
+    render::camera::Exposure,
+};
 use bevy_common_assets::ron::RonAssetPlugin;
 use bevy_fps_controller::controller::*;
 use bevy_mod_picking::backend::PointerHits;
@@ -35,7 +39,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(FpsControllerPlugin)
-        .add_plugins(RapierDebugRenderPlugin::default())
+        // .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(PostProcessPlugin)
         .add_plugins(RonAssetPlugin::<Level>::new(&["level.ron"]))
         .insert_resource(PickingPluginsSettings {
@@ -140,18 +144,6 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 150000000.0,
-            range: 100.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
-
     // Floor
     commands.spawn((
         PbrBundle {
@@ -217,6 +209,19 @@ fn setup(
         .insert(CameraConfig {
             height_offset: 0.6, // Adjust this to change the camera height
         })
+        .with_children(|parent| {
+            parent.spawn(PointLightBundle {
+                point_light: PointLight {
+                    intensity: 150000000.0,
+                    shadows_enabled: true,
+                    range: 100.0,
+                    radius: 10.0,
+                    ..default()
+                },
+                transform: Transform::from_xyz(0.0, 2.0, 0.0),
+                ..default()
+            });
+        })
         .id();
 
     // Camera
@@ -231,12 +236,14 @@ fn setup(
             }),
             ..default()
         },
+        DepthPrepass,
+        NormalPrepass,
         RenderPlayer { logical_entity },
         PostProcessSettings {
-            pixel_size: 256.,     // Smaller value for less pixelation
-            edge_threshold: 0.5,  // Higher value for less pronounced edges
-            color_depth: 16.0,    // Higher value for more colors
-            effect_strength: 1.0, // Adjust this to blend with the original image
+            pixel_size: 2.,
+            normal_edge_strength: 0.8,
+            depth_edge_strength: 0.8,
+            resolution: Vec2::new(1280.0, 720.0),
         },
     ));
 }
